@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Zombie Survival 3D</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; user-select: none; }
+        #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        
+        /* ИНТЕРФЕЙС */
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
+        #main-menu, #map-menu { display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; background: rgba(0,0,0,0.8); }
+        
+        h1 { color: red; font-size: 60px; margin-bottom: 50px; text-shadow: 0 0 10px red; }
+        h2 { color: white; font-size: 40px; }
+        
+        .btn { padding: 15px 40px; font-size: 24px; font-weight: bold; cursor: pointer; border: none; border-radius: 5px; margin: 10px; transition: 0.2s; }
+        .btn-play { background-color: #007bff; color: white; }
+        .btn-play:hover { background-color: #0056b3; }
+        .btn-gray { background-color: gray; color: white; }
+        .btn-gray:hover { background-color: darkgray; }
+        
+        .map-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-top: 30px; }
+        .btn-map { padding: 20px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 5px; text-align: center; }
+        .map-unlocked { background-color: #28a745; color: white; }
+        .map-unlocked:hover { background-color: #218838; }
+        .map-locked { background-color: #444; color: #888; }
+        
+        /* HUD (ЭКРАН ИГРОКА) */
+        #hud { pointer-events: none; }
+        .hud-stats { position: absolute; top: 20px; left: 20px; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 0 #000; }
+        #round-text { color: cyan; }
+        #hp-text { color: lime; }
+        #coins-text { color: gold; }
+        #weapon-text { color: white; }
+        
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; background-color: red; transform: translate(-50%, -50%); border-radius: 50%; }
+        #shop-info { position: absolute; bottom: 20px; right: 20px; font-size: 18px; color: lightgray; text-align: right; text-shadow: 1px 1px 0 #000; }
+        
+        #announcement { position: absolute; top: 30%; left: 0; width: 100%; text-align: center; font-size: 50px; font-weight: bold; color: yellow; text-shadow: 2px 2px 0 #000; display: none; }
+        #menu-coins { color: gold; font-size: 30px; font-weight: bold; margin-bottom: 20px; }
+    </style>
+    
+    <!-- Подключаем Three.js через import map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="game-container"></div>
+
+    <!-- ГЛАВНОЕ МЕНЮ -->
+    <div id="main-menu" class="ui-layer" style="display: flex;">
+        <h1>ZOMBIE SURVIVAL</h1>
+        <button class="btn btn-play" id="btn-start">ИГРАТЬ</button>
+    </div>
+
+    <!-- МЕНЮ ВЫБОРА КАРТ -->
+    <div id="map-menu" class="ui-layer">
+        <h2>ВЫБЕРИТЕ КАРТУ</h2>
+        <div id="menu-coins">МОНЕТЫ: 0</div>
+        <div class="map-grid" id="map-grid"></div>
+        <button class="btn btn-gray" id="btn-back" style="margin-top: 40px;">НАЗАД</button>
+    </div>
+
+    <!-- ИГРОВОЙ ИНТЕРФЕЙС -->
+    <div id="hud" class="ui-layer">
+        <div class="hud-stats">
+            <div id="round-text">РАУНД: 1/10</div>
+            <div id="hp-text">HP: 100</div>
+            <div id="coins-text">МОНЕТЫ: 0</div>
+            <div id="weapon-text">ОРУЖИЕ: ПИСТОЛЕТ</div>
+        </div>
+        <div id="crosshair"></div>
+        <div id="shop-info">
+            МАГАЗИН (Жми цифры):<br>
+            [1] Пистолет (0)<br>
+            [2] Автомат (50)<br>
+            [3] Дробовик (150)
+        </div>
+    </div>
+    
+    <div id="announcement"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        // --- ЗВУКИ ---
+        const sfxFire = new Audio('fire.mp3');
+        const sfxStep = new Audio('step.wav');
+        sfxFire.volume = 0.5; sfxStep.volume = 0.5;
+
+        // --- ПАРАМЕТРЫ ИГРЫ ---
+        let hp = 100, coins = 0, currentRound = 1, zombiesAlive = 0, isWaiting = false;
+        let unlockedMaps = [true, true, true, true, true, false, false, false, false, false];
+        const wallColors = [0x333333, 0xffa500, 0x007fff, 0xffff00, 0xff00ff, 0x8b4513, 0xff0000, 0x00ffff, 0xffc0cb, 0x111111];
+        
+        const weapons = {
+            '1': { name: 'ПИСТОЛЕТ', cost: 0, cooldown: 0.4, damage: 1, color: 0x00ffff, owned: true },
+            '2': { name: 'АВТОМАТ', cost: 50, cooldown: 0.1, damage: 1, color: 0xffff00, owned: false },
+            '3': { name: 'ДРОБОВИК', cost: 150, cooldown: 0.8, damage: 5, color: 0xffa500, owned: false }
+        };
+        let currentWeaponKey = '1';
+        let weaponTimer = 0;
+
+        // --- НАСТРОЙКА THREE.JS ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Небо
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 80);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('game-container').appendChild(renderer.domElement);
+
+        const controls = new PointerLockControls(camera, document.body);
+        
+        // Освещение
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+        light.position.set(0, 50, 0);
+        scene.add(light);
+
+        // Земля
+        const groundGeo = new THREE.PlaneGeometry(200, 200);
+        const groundMat = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
+
+        // Оружие в руках (привязано к камере)
+        const weaponGeo = new THREE.BoxGeometry(0.2, 0.2, 1);
+        const weaponMat = new THREE.MeshLambertMaterial({ color: weapons['1'].color });
+        const weaponMesh = new THREE.Mesh(weaponGeo, weaponMat);
+        weaponMesh.position.set(0.5, -0.4, -0.8);
+        camera.add(weaponMesh);
+        scene.add(camera);
+
+        let mapBlocks = [];
+        let enemies = [];
+
+        // --- УПРАВЛЕНИЕ UI ---
+        const uiMain = document.getElementById('main-menu');
+        const uiMap = document.getElementById('map-menu');
+        const uiHud = document.getElementById('hud');
+        const mapGrid = document.getElementById('map-grid');
+        const announceEl = document.getElementById('announcement');
+
+        function updateHUD() {
+            document.getElementById('hp-text').innerText = `HP: ${Math.floor(hp)}`;
+            document.getElementById('hp-text').style.color = hp > 50 ? 'lime' : (hp > 25 ? 'orange' : 'red');
+            document.getElementById('coins-text').innerText = `МОНЕТЫ: ${coins}`;
+            document.getElementById('weapon-text').innerText = `ОРУЖИЕ: ${weapons[currentWeaponKey].name}`;
+            document.getElementById('round-text').innerText = `РАУНД: ${currentRound}/10`;
+            weaponMesh.material.color.setHex(weapons[currentWeaponKey].color);
+        }
+
+        function showAnnouncement(text, color, duration = 3000) {
+            announceEl.innerText = text;
+            announceEl.style.color = color;
+            announceEl.style.display = 'block';
+            if (duration > 0) setTimeout(() => announceEl.style.display = 'none', duration);
+        }
+
+        function buildMapMenu() {
+            mapGrid.innerHTML = '';
+            document.getElementById('menu-coins').innerText = `МОНЕТЫ: ${coins}`;
+            
+            for (let i = 0; i < 10; i++) {
+                const btn = document.createElement('button');
+                btn.className = `btn-map ${unlockedMaps[i] ? 'map-unlocked' : 'map-locked'}`;
+                btn.innerText = unlockedMaps[i] ? `КАРТА ${i+1}` : `КАРТА ${i+1}\n(1000 монет)`;
+                
+                btn.onclick = () => {
+                    if (unlockedMaps[i]) startGame(i);
+                    else if (coins >= 1000) {
+                        coins -= 1000;
+                        unlockedMaps[i] = true;
+                        buildMapMenu();
+                    } else {
+                        btn.innerText = "НЕ ХВАТАЕТ!";
+                        btn.style.color = "red";
+                        setTimeout(buildMapMenu, 1500);
+                    }
+                };
+                mapGrid.appendChild(btn);
+            }
+        }
+
+        document.getElementById('btn-start').onclick = () => { uiMain.style.display = 'none'; uiMap.style.display = 'flex'; buildMapMenu(); };
+        document.getElementById('btn-back').onclick = () => { uiMap.style.display = 'none'; uiMain.style.display = 'flex'; };
+
+        // --- ГЕНЕРАЦИЯ ИГРЫ ---
+        function startGame(mapIdx) {
+            uiMap.style.display = 'none';
+            uiHud.style.display = 'block';
+            controls.lock();
+
+            hp = 100;
+            currentRound = 1;
+            zombiesAlive = 0;
+            isWaiting = false;
+            
+            camera.position.set(0, 3, 0);
+            ground.material.color.setHex(wallColors[9 - mapIdx]);
+
+            // Очистка карты
+            mapBlocks.forEach(b => scene.remove(b));
+            mapBlocks = [];
+            enemies.forEach(e => scene.remove(e.mesh));
+            enemies = [];
+
+            // Генерация блоков
+            const blockMat = new THREE.MeshLambertMaterial({ color: wallColors[mapIdx] });
+            for (let i = 0; i < 25; i++) {
+                const w = Math.random() * 4 + 2; const h = Math.random() * 4 + 1; const d = Math.random() * 4 + 2;
+                const geo = new THREE.BoxGeometry(w, h, d);
+                const block = new THREE.Mesh(geo, blockMat);
+                block.position.set((Math.random() - 0.5) * 60, h/2, (Math.random() - 0.5) * 60);
+                scene.add(block);
+                mapBlocks.push(block);
+            }
+
+            updateHUD();
+            showAnnouncement('ГОТОВЬСЯ...', 'yellow', 2000);
+            setTimeout(startRound, 2000);
+        }
+
+        function returnToMenu() {
+            controls.unlock();
+            uiHud.style.display = 'none';
+            uiMain.style.display = 'flex';
+            announceEl.style.display = 'none';
+            buildMapMenu();
+        }
+
+        // --- ЛОГИКА ЗОМБИ ---
+        function spawnZombie(isBoss = false) {
+            let x, z;
+            do {
+                x = (Math.random() - 0.5) * 90;
+                z = (Math.random() - 0.5) * 90;
+            } while (Math.hypot(x - camera.position.x, z - camera.position.z) < 20); // Защита от спавна в упор
+
+            const zType = isBoss ? 'boss' : (Math.random() > 0.6 ? 'runner' : 'walker');
+            let color, scale, hpMax, speed, reward;
+
+            if (zType === 'runner') { color = 0x00ff00; scale = [1.2, 2, 1.2]; hpMax = 2; speed = 8; reward = 10; }
+            else if (zType === 'walker') { color = 0x008000; scale = [2.2, 2.8, 2.2]; hpMax = 6; speed = 3; reward = 15; }
+            else { color = 0x222222; scale = [4, 5, 4]; hpMax = 150; speed = 2.0; reward = 500; }
+
+            const group = new THREE.Group();
+            group.position.set(x, scale[1]/2, z);
+
+            const bodyGeo = new THREE.BoxGeometry(scale[0], scale[1], scale[2]);
+            const bodyMat = new THREE.MeshLambertMaterial({ color: color });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            group.add(body);
+
+            // Глаза
+            const eyeGeo = new THREE.BoxGeometry(scale[0]*0.2, scale[1]*0.1, scale[2]*0.1);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-scale[0]*0.25, scale[1]*0.25, scale[2]*0.5);
+            const eyeR = new THREE.Mesh(eyeGeo, eyeMat); eyeR.position.set(scale[0]*0.25, scale[1]*0.25, scale[2]*0.5);
+            group.add(eyeL); group.add(eyeR);
+
+            scene.add(group);
+            enemies.push({ mesh: group, body: body, type: zType, hp: hpMax, speed: speed, reward: reward });
+        }
+
+        function startRound() {
+            if (!controls.isLocked) return;
+            isWaiting = false;
+            
+            if (currentRound < 10) {
+                for(let i=0; i<10; i++) { spawnZombie(); zombiesAlive++; }
+            } else {
+                showAnnouncement('ФИНАЛЬНЫЙ БОСС!\n(ОДИН НА ОДИН)', 'red', 3000);
+                spawnZombie(true); zombiesAlive++;
+            }
+        }
+
+        function endRound() {
+            isWaiting = true;
+            hp = Math.min(100, hp + 20);
+            updateHUD();
+
+            if (currentRound < 10) {
+                showAnnouncement(`РАУНД ${currentRound} ПРОЙДЕН!\n+20 HP!\nСЛЕДУЮЩИЙ ЧЕРЕЗ 3 СЕК...`, 'yellow', 3000);
+                currentRound++;
+                setTimeout(startRound, 3000);
+            } else {
+                showAnnouncement('🏆 ПОБЕДА! 🏆\nТЫ ОДОЛЕЛ БОССА!', 'lime', 5000);
+                setTimeout(returnToMenu, 5000);
+            }
+        }
+
+        // --- УПРАВЛЕНИЕ И ВВОД ---
+        const keys = { w: false, a: false, s: false, d: false };
+        document.addEventListener('keydown', (e) => {
+            if(e.code === 'KeyW') keys.w = true; if(e.code === 'KeyA') keys.a = true;
+            if(e.code === 'KeyS') keys.s = true; if(e.code === 'KeyD') keys.d = true;
+
+            // Покупка/выбор оружия
+            if(['Digit1', 'Digit2', 'Digit3'].includes(e.code) && controls.isLocked) {
+                const key = e.code.replace('Digit', '');
+                const wpn = weapons[key];
+                if (wpn.owned) {
+                    currentWeaponKey = key; updateHUD();
+                } else if (coins >= wpn.cost) {
+                    coins -= wpn.cost; wpn.owned = true; currentWeaponKey = key; updateHUD();
+                } else {
+                    document.getElementById('weapon-text').innerText = `НЕ ХВАТАЕТ: ${wpn.cost} МОНЕТ!`;
+                    document.getElementById('weapon-text').style.color = 'red';
+                    setTimeout(updateHUD, 1500);
+                }
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            if(e.code === 'KeyW') keys.w = false; if(e.code === 'KeyA') keys.a = false;
+            if(e.code === 'KeyS') keys.s = false; if(e.code === 'KeyD') keys.d = false;
+        });
+
+        // Стрельба (Raycasting)
+        const raycaster = new THREE.Raycaster();
+        let isMouseDown = false;
+        document.addEventListener('mousedown', () => { if(controls.isLocked) isMouseDown = true; });
+        document.addEventListener('mouseup', () => isMouseDown = false);
+
+        // --- ИГРОВОЙ ЦИКЛ ---
+        const clock = new THREE.Clock();
+        let footstepTimer = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+
+            if (controls.isLocked && hp > 0) {
+                // Движение игрока
+                const speed = 12 * dt;
+                if (keys.w) controls.moveForward(speed);
+                if (keys.s) controls.moveForward(-speed);
+                if (keys.d) controls.moveRight(speed);
+                if (keys.a) controls.moveRight(-speed);
+
+                // Ограничение карты
+                if (camera.position.x > 48) camera.position.x = 48; if (camera.position.x < -48) camera.position.x = -48;
+                if (camera.position.z > 48) camera.position.z = 48; if (camera.position.z < -48) camera.position.z = -48;
+
+                // Звук шагов
+                if (keys.w || keys.a || keys.s || keys.d) {
+                    footstepTimer -= dt;
+                    if (footstepTimer <= 0) {
+                        sfxStep.currentTime = 0; sfxStep.playbackRate = 0.8 + Math.random()*0.4;
+                        sfxStep.play().catch(()=>{});
+                        footstepTimer = 0.35;
+                    }
+                } else { footstepTimer = 0; }
+
+                // Стрельба
+                if (weaponTimer > 0) weaponTimer -= dt;
+                if (isMouseDown && weaponTimer <= 0) {
+                    weaponTimer = weapons[currentWeaponKey].cooldown;
+                    sfxFire.currentTime = 0; sfxFire.playbackRate = 0.9 + Math.random()*0.2;
+                    sfxFire.play().catch(()=>{});
+                    
+                    // Анимация отдачи
+                    weaponMesh.position.z = -0.6;
+                    setTimeout(() => weaponMesh.position.z = -0.8, 50);
+
+                    // Проверка попадания
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const intersects = raycaster.intersectObjects(enemies.map(e => e.body));
+                    
+                    if (intersects.length > 0) {
+                        const hitBody = intersects[0].object;
+                        const enemyIdx = enemies.findIndex(e => e.body === hitBody);
+                        if (enemyIdx !== -1) {
+                            const enemy = enemies[enemyIdx];
+                            enemy.hp -= weapons[currentWeaponKey].damage;
+                            
+                            // Мигание красным
+                            const origColor = enemy.body.material.color.getHex();
+                            enemy.body.material.color.setHex(0xff0000);
+                            setTimeout(() => { if(enemy && enemy.body) enemy.body.material.color.setHex(origColor); }, 100);
+
+                            if (enemy.hp <= 0) {
+                                coins += enemy.reward;
+                                updateHUD();
+                                scene.remove(enemy.mesh);
+                                enemies.splice(enemyIdx, 1);
+                                zombiesAlive--;
+                                
+                                if (zombiesAlive <= 0 && !isWaiting) endRound();
+                            }
+                        }
+                    }
+                }
+
+                // Обновление зомби
+                enemies.forEach(enemy => {
+                    const dir = new THREE.Vector3();
+                    dir.subVectors(camera.position, enemy.mesh.position).normalize();
+                    dir.y = 0; // Зомби не летают
+                    
+                    // Поворот к игроку
+                    const targetRotation = Math.atan2(dir.x, dir.z);
+                    enemy.mesh.rotation.y = targetRotation;
+                    
+                    // Движение
+                    enemy.mesh.position.addScaledVector(dir, enemy.speed * dt);
+
+                    // Урон игроку
+                    if (enemy.mesh.position.distanceTo(camera.position) < (enemy.type === 'boss' ? 3.5 : 2.5)) {
+                        hp -= (enemy.type === 'boss' ? 40 : 20) * dt;
+                        updateHUD();
+                        if (hp <= 0) {
+                            showAnnouncement('ВЫ СТАЛИ ЗОМБИ!', 'red', 0);
+                            setTimeout(returnToMenu, 3000);
+                        }
+                    }
+                });
+            }
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Сброс меню при нажатии ESCAPE (браузер сам разблокирует мышь)
+        document.addEventListener('pointerlockchange', () => {
+            if (!document.pointerLockElement && hp > 0) returnToMenu();
+        });
+
+        animate();
+    </script>
+</body>
+</html>
