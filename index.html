@@ -33,6 +33,7 @@
         #hp-text { color: lime; }
         #coins-text { color: gold; }
         #weapon-text { color: white; }
+        #ammo-text { color: #ffcccc; margin-top: 10px; font-size: 28px;}
         
         #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; background-color: red; transform: translate(-50%, -50%); border-radius: 50%; }
         #shop-info { position: absolute; bottom: 20px; right: 20px; font-size: 18px; color: lightgray; text-align: right; text-shadow: 1px 1px 0 #000; }
@@ -72,13 +73,15 @@
             <div id="hp-text">HP: 100</div>
             <div id="coins-text">PIÈCES: 0</div>
             <div id="weapon-text">ARME: PISTOLET</div>
+            <div id="ammo-text">MUNITIONS: ∞</div>
         </div>
         <div id="crosshair"></div>
         <div id="shop-info">
-            BOUTIQUE (Touches 1-3):<br>
+            BOUTIQUE :<br>
             [1] Pistolet (0)<br>
             [2] Fusil d'assaut (50)<br>
-            [3] Fusil à pompe (150)
+            [3] Fusil à pompe (150)<br><br>
+            <span style="color:#ffcccc;">[R] RECHARGER (35)</span>
         </div>
     </div>
     
@@ -98,10 +101,12 @@
         let unlockedMaps = [true, true, true, true, true, false, false, false, false, false];
         const wallColors = [0x333333, 0xffa500, 0x007fff, 0xffff00, 0xff00ff, 0x8b4513, 0xff0000, 0x00ffff, 0xffc0cb, 0x111111];
         
+        // --- ARMEMENT ET MUNITIONS ---
+        // On ajoute ammo et maxAmmo pour chaque arme
         const weapons = {
-            '1': { name: 'PISTOLET', cost: 0, cooldown: 0.4, damage: 1, color: 0x00ffff, owned: true },
-            '2': { name: 'FUSIL ASSAUT', cost: 50, cooldown: 0.1, damage: 1, color: 0xffff00, owned: false },
-            '3': { name: 'POMPE', cost: 150, cooldown: 0.8, damage: 5, color: 0xffa500, owned: false }
+            '1': { name: 'PISTOLET', cost: 0, cooldown: 0.4, damage: 1, color: 0x00ffff, owned: true, ammo: Infinity, maxAmmo: Infinity },
+            '2': { name: 'FUSIL ASSAUT', cost: 50, cooldown: 0.1, damage: 1, color: 0xffff00, owned: false, ammo: 120, maxAmmo: 120 },
+            '3': { name: 'POMPE', cost: 150, cooldown: 0.8, damage: 5, color: 0xffa500, owned: false, ammo: 30, maxAmmo: 30 }
         };
         let currentWeaponKey = '1';
         let weaponTimer = 0;
@@ -168,7 +173,20 @@
             document.getElementById('hp-text').style.color = hp > 50 ? 'lime' : (hp > 25 ? 'orange' : 'red');
             document.getElementById('coins-text').innerText = `PIÈCES: ${coins}`;
             document.getElementById('weapon-text').innerText = `ARME: ${weapons[currentWeaponKey].name}`;
-            document.getElementById('round-text').innerText = `ROUND: ${currentRound}/10`;
+            
+            // Affichage des munitions
+            const currentAmmo = weapons[currentWeaponKey].ammo;
+            const maxAmmo = weapons[currentWeaponKey].maxAmmo;
+            const ammoString = currentAmmo === Infinity ? "∞" : `${currentAmmo}/${maxAmmo}`;
+            document.getElementById('ammo-text').innerText = `MUNITIONS: ${ammoString}`;
+            
+            // Si l'arme est vide, on met le texte en rouge
+            if(currentAmmo === 0) {
+                document.getElementById('ammo-text').style.color = 'red';
+            } else {
+                document.getElementById('ammo-text').style.color = '#ffcccc';
+            }
+
             weaponMesh.material.color.setHex(weapons[currentWeaponKey].color);
         }
 
@@ -218,27 +236,26 @@
             zombiesAlive = 0;
             isWaiting = false;
             
+            // Recharge automatique au début de la partie pour être sûr
+            weapons['2'].ammo = weapons['2'].maxAmmo;
+            weapons['3'].ammo = weapons['3'].maxAmmo;
+
             camera.position.set(0, 3, 0);
-            velocityY = 0; // Réinitialise la gravité
+            velocityY = 0; 
             
             ground.material.color.setHex(wallColors[9 - mapIdx]);
-            
-            // Appliquer la couleur aux grands murs extérieurs
             borderWalls.forEach(wall => wall.material.color.setHex(wallColors[mapIdx]));
 
-            // Nettoyer l'arène
             mapBlocks.forEach(b => scene.remove(b));
             mapBlocks = [];
             enemies.forEach(e => scene.remove(e.mesh));
             enemies = [];
 
-            // Créer les petits blocs (abris) à l'intérieur de l'arène
             const blockMat = new THREE.MeshLambertMaterial({ color: wallColors[mapIdx] });
             for (let i = 0; i < 25; i++) {
                 const w = Math.random() * 4 + 2; const h = Math.random() * 4 + 1; const d = Math.random() * 4 + 2;
                 const geo = new THREE.BoxGeometry(w, h, d);
                 const block = new THREE.Mesh(geo, blockMat);
-                // Positionnés de -40 à 40 pour ne pas coller aux murs extérieurs (-50 à 50)
                 block.position.set((Math.random() - 0.5) * 80, h/2, (Math.random() - 0.5) * 80);
                 scene.add(block);
                 mapBlocks.push(block);
@@ -325,17 +342,40 @@
 
             // SAUT avec Espace
             if(e.code === 'Space' && canJump && controls.isLocked) {
-                velocityY = 15; // Puissance du saut
+                velocityY = 15; 
                 canJump = false;
             }
 
-            if(['Digit1', 'Digit2', 'Digit3'].includes(e.code) && controls.isLocked) {
-                const key = e.code.replace('Digit', '');
-                const wpn = weapons[key];
+            // RECHARGEMENT avec la touche R
+            if(e.code === 'KeyR' && controls.isLocked) {
+                const wpn = weapons[currentWeaponKey];
+                // Si ce n'est pas le pistolet et qu'on n'est pas déjà au max
+                if (wpn.ammo !== Infinity && wpn.ammo < wpn.maxAmmo) {
+                    if (coins >= 35) {
+                        coins -= 35;
+                        wpn.ammo = wpn.maxAmmo;
+                        updateHUD();
+                        showAnnouncement('RECHARGÉ !', 'lime', 1000);
+                    } else {
+                        document.getElementById('ammo-text').innerText = "PAS ASSEZ (35 PIÈCES)!";
+                        document.getElementById('ammo-text').style.color = "red";
+                        setTimeout(updateHUD, 1500);
+                    }
+                }
+            }
+
+            // CHANGEMENT / ACHAT D'ARMES (Adapté pour AZERTY & Pavé Numérique sans utiliser Shift)
+            let pressedWeapon = null;
+            if (e.code === 'Digit1' || e.code === 'Numpad1' || e.key === '&' || e.key === '1') pressedWeapon = '1';
+            if (e.code === 'Digit2' || e.code === 'Numpad2' || e.key === 'é' || e.key === '2') pressedWeapon = '2';
+            if (e.code === 'Digit3' || e.code === 'Numpad3' || e.key === '"' || e.key === '3') pressedWeapon = '3';
+
+            if(pressedWeapon && controls.isLocked) {
+                const wpn = weapons[pressedWeapon];
                 if (wpn.owned) {
-                    currentWeaponKey = key; updateHUD();
+                    currentWeaponKey = pressedWeapon; updateHUD();
                 } else if (coins >= wpn.cost) {
-                    coins -= wpn.cost; wpn.owned = true; currentWeaponKey = key; updateHUD();
+                    coins -= wpn.cost; wpn.owned = true; currentWeaponKey = pressedWeapon; updateHUD();
                 } else {
                     document.getElementById('weapon-text').innerText = `PAS ASSEZ: ${wpn.cost} PIÈCES!`;
                     document.getElementById('weapon-text').style.color = 'red';
@@ -343,6 +383,7 @@
                 }
             }
         });
+        
         document.addEventListener('keyup', (e) => {
             if(e.code === 'KeyW') keys.w = false; if(e.code === 'KeyA') keys.a = false;
             if(e.code === 'KeyS') keys.s = false; if(e.code === 'KeyD') keys.d = false;
@@ -370,24 +411,22 @@
                 if (keys.a) controls.moveRight(-speed);
 
                 // GRAVITÉ ET SAUT
-                velocityY -= 40 * dt; // Appliquer la gravité
+                velocityY -= 40 * dt; 
                 camera.position.y += velocityY * dt;
                 
-                // Collision avec le sol
                 if (camera.position.y <= 3) {
                     camera.position.y = 3;
                     velocityY = 0;
                     canJump = true;
                 }
 
-                // COLLISION AVEC LES MURS (Limites de la carte)
-                // L'arène fait 100x100 (-50 à 50). Le joueur s'arrête à 48 pour ne pas traverser.
+                // COLLISION AVEC LES MURS
                 if (camera.position.x > 48) camera.position.x = 48; 
                 if (camera.position.x < -48) camera.position.x = -48;
                 if (camera.position.z > 48) camera.position.z = 48; 
                 if (camera.position.z < -48) camera.position.z = -48;
 
-                // Sons de pas (Seulement si au sol)
+                // Sons de pas 
                 if ((keys.w || keys.a || keys.s || keys.d) && canJump) {
                     footstepTimer -= dt;
                     if (footstepTimer <= 0) {
@@ -397,40 +436,52 @@
                     }
                 } else { footstepTimer = 0; }
 
-                // Tir
+                // TIR & MUNITIONS
                 if (weaponTimer > 0) weaponTimer -= dt;
                 if (isMouseDown && weaponTimer <= 0) {
-                    weaponTimer = weapons[currentWeaponKey].cooldown;
-                    sfxFire.currentTime = 0; sfxFire.playbackRate = 0.9 + Math.random()*0.2;
-                    sfxFire.play().catch(()=>{});
+                    const wpn = weapons[currentWeaponKey];
                     
-                    weaponMesh.position.z = -0.6;
-                    setTimeout(() => weaponMesh.position.z = -0.8, 50);
+                    // On vérifie s'il reste des balles
+                    if (wpn.ammo > 0) {
+                        wpn.ammo--; // On retire une balle
+                        updateHUD(); // On met à jour l'affichage
+                        
+                        weaponTimer = wpn.cooldown;
+                        sfxFire.currentTime = 0; sfxFire.playbackRate = 0.9 + Math.random()*0.2;
+                        sfxFire.play().catch(()=>{});
+                        
+                        weaponMesh.position.z = -0.6;
+                        setTimeout(() => weaponMesh.position.z = -0.8, 50);
 
-                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                    const intersects = raycaster.intersectObjects(enemies.map(e => e.body));
-                    
-                    if (intersects.length > 0) {
-                        const hitBody = intersects[0].object;
-                        const enemyIdx = enemies.findIndex(e => e.body === hitBody);
-                        if (enemyIdx !== -1) {
-                            const enemy = enemies[enemyIdx];
-                            enemy.hp -= weapons[currentWeaponKey].damage;
-                            
-                            const origColor = enemy.body.material.color.getHex();
-                            enemy.body.material.color.setHex(0xff0000);
-                            setTimeout(() => { if(enemy && enemy.body) enemy.body.material.color.setHex(origColor); }, 100);
-
-                            if (enemy.hp <= 0) {
-                                coins += enemy.reward;
-                                updateHUD();
-                                scene.remove(enemy.mesh);
-                                enemies.splice(enemyIdx, 1);
-                                zombiesAlive--;
+                        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                        const intersects = raycaster.intersectObjects(enemies.map(e => e.body));
+                        
+                        if (intersects.length > 0) {
+                            const hitBody = intersects[0].object;
+                            const enemyIdx = enemies.findIndex(e => e.body === hitBody);
+                            if (enemyIdx !== -1) {
+                                const enemy = enemies[enemyIdx];
+                                enemy.hp -= wpn.damage;
                                 
-                                if (zombiesAlive <= 0 && !isWaiting) endRound();
+                                const origColor = enemy.body.material.color.getHex();
+                                enemy.body.material.color.setHex(0xff0000);
+                                setTimeout(() => { if(enemy && enemy.body) enemy.body.material.color.setHex(origColor); }, 100);
+
+                                if (enemy.hp <= 0) {
+                                    coins += enemy.reward;
+                                    updateHUD();
+                                    scene.remove(enemy.mesh);
+                                    enemies.splice(enemyIdx, 1);
+                                    zombiesAlive--;
+                                    
+                                    if (zombiesAlive <= 0 && !isWaiting) endRound();
+                                }
                             }
                         }
+                    } else {
+                        // Plus de balles ! On empêche de spammer le message
+                        weaponTimer = 0.5;
+                        showAnnouncement('RECHARGEZ (Touche R) !', 'red', 1000);
                     }
                 }
 
