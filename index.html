@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <title>Zombie Survival 3D</title>
@@ -7,7 +7,7 @@
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; user-select: none; }
         #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
-        /* INTERFACE */
+        /* ИНТЕРФЕЙС */
         .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
         #main-menu, #map-menu { display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; background: rgba(0,0,0,0.8); }
         
@@ -26,7 +26,7 @@
         .map-unlocked:hover { background-color: #218838; }
         .map-locked { background-color: #444; color: #888; }
         
-        /* HUD (ÉCRAN DU JOUEUR) */
+        /* HUD (ЭКРАН ИГРОКА) */
         #hud { pointer-events: none; }
         .hud-stats { position: absolute; top: 20px; left: 20px; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 0 #000; }
         #round-text { color: cyan; }
@@ -57,31 +57,31 @@
 
     <div id="main-menu" class="ui-layer" style="display: flex;">
         <h1>ZOMBIE SURVIVAL</h1>
-        <button class="btn btn-play" id="btn-start">JOUER</button>
+        <button class="btn btn-play" id="btn-start">ИГРАТЬ</button>
     </div>
 
     <div id="map-menu" class="ui-layer">
-        <h2>CHOISISSEZ UNE CARTE</h2>
-        <div id="menu-coins">PIÈCES: 0</div>
+        <h2>ВЫБЕРИТЕ КАРТУ</h2>
+        <div id="menu-coins">МОНЕТЫ: 0</div>
         <div class="map-grid" id="map-grid"></div>
-        <button class="btn btn-gray" id="btn-back" style="margin-top: 40px;">RETOUR</button>
+        <button class="btn btn-gray" id="btn-back" style="margin-top: 40px;">НАЗАД</button>
     </div>
 
     <div id="hud" class="ui-layer">
         <div class="hud-stats">
-            <div id="round-text">ROUND: 1/10</div>
+            <div id="round-text">РАУНД: 1/10</div>
             <div id="hp-text">HP: 100</div>
-            <div id="coins-text">PIÈCES: 0</div>
-            <div id="weapon-text">ARME: PISTOLET</div>
-            <div id="ammo-text">MUNITIONS: ∞</div>
+            <div id="coins-text">МОНЕТЫ: 0</div>
+            <div id="weapon-text">ОРУЖИЕ: ПИСТОЛЕТ</div>
+            <div id="ammo-text">ПАТРОНЫ: ∞</div>
         </div>
         <div id="crosshair"></div>
         <div id="shop-info">
-            BOUTIQUE :<br>
-            [1] Pistolet (0)<br>
-            [2] Fusil d'assaut (50)<br>
-            [3] Fusil à pompe (150)<br><br>
-            <span style="color:#ffcccc;">[R] RECHARGER (35)</span>
+            МАГАЗИН :<br>
+            [1] Пистолет (0)<br>
+            [2] Автомат (50)<br>
+            [3] Дробовик (150)<br><br>
+            <span style="color:#ffcccc;">[R] ПЕРЕЗАРЯДКА (35)</span>
         </div>
     </div>
     
@@ -91,31 +91,30 @@
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-        // --- SONS ---
+        // --- ЗВУКИ ---
         const sfxFire = new Audio('fire.mp3');
         const sfxStep = new Audio('step.wav');
         sfxFire.volume = 0.5; sfxStep.volume = 0.5;
 
-        // --- PARAMÈTRES DU JEU ---
+        // --- ПАРАМЕТРЫ ИГРЫ ---
         let hp = 100, coins = 0, currentRound = 1, zombiesAlive = 0, isWaiting = false;
         let unlockedMaps = [true, true, true, true, true, false, false, false, false, false];
         const wallColors = [0x333333, 0xffa500, 0x007fff, 0xffff00, 0xff00ff, 0x8b4513, 0xff0000, 0x00ffff, 0xffc0cb, 0x111111];
         
-        // --- ARMEMENT ET MUNITIONS ---
-        // On ajoute ammo et maxAmmo pour chaque arme
+        // --- ОРУЖИЕ И ПАТРОНЫ ---
         const weapons = {
-            '1': { name: 'PISTOLET', cost: 0, cooldown: 0.4, damage: 1, color: 0x00ffff, owned: true, ammo: Infinity, maxAmmo: Infinity },
-            '2': { name: 'FUSIL ASSAUT', cost: 50, cooldown: 0.1, damage: 1, color: 0xffff00, owned: false, ammo: 120, maxAmmo: 120 },
-            '3': { name: 'POMPE', cost: 150, cooldown: 0.8, damage: 5, color: 0xffa500, owned: false, ammo: 30, maxAmmo: 30 }
+            '1': { name: 'ПИСТОЛЕТ', cost: 0, cooldown: 0.4, damage: 1, color: 0x00ffff, owned: true, ammo: Infinity, maxAmmo: Infinity },
+            '2': { name: 'АВТОМАТ', cost: 50, cooldown: 0.1, damage: 1, color: 0xffff00, owned: false, ammo: 120, maxAmmo: 120 },
+            '3': { name: 'ДРОБОВИК', cost: 150, cooldown: 0.8, damage: 5, color: 0xffa500, owned: false, ammo: 30, maxAmmo: 30 }
         };
         let currentWeaponKey = '1';
         let weaponTimer = 0;
 
-        // --- VARIABLES POUR LE SAUT ---
+        // --- ПЕРЕМЕННЫЕ ДЛЯ ПРЫЖКА ---
         let velocityY = 0;
         let canJump = true;
 
-        // --- CONFIGURATION THREE.JS ---
+        // --- НАСТРОЙКА THREE.JS ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB); 
         scene.fog = new THREE.Fog(0x87CEEB, 20, 80);
@@ -131,14 +130,14 @@
         light.position.set(0, 50, 0);
         scene.add(light);
 
-        // Sol
+        // Земля
         const groundGeo = new THREE.PlaneGeometry(100, 100);
         const groundMat = new THREE.MeshLambertMaterial({ color: 0x228B22 });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
 
-        // --- MURS DE LIMITE (ARENA BORDERS) ---
+        // --- СТЕНЫ ОГРАНИЧИТЕЛИ ---
         const borderMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
         const borderGeoFB = new THREE.BoxGeometry(100, 20, 2);
         const borderGeoLR = new THREE.BoxGeometry(2, 20, 100);
@@ -150,7 +149,7 @@
         scene.add(wallN, wallS, wallE, wallW);
         const borderWalls = [wallN, wallS, wallE, wallW];
 
-        // Arme dans les mains
+        // Оружие в руках
         const weaponGeo = new THREE.BoxGeometry(0.2, 0.2, 1);
         const weaponMat = new THREE.MeshLambertMaterial({ color: weapons['1'].color });
         const weaponMesh = new THREE.Mesh(weaponGeo, weaponMat);
@@ -171,16 +170,15 @@
         function updateHUD() {
             document.getElementById('hp-text').innerText = `HP: ${Math.floor(hp)}`;
             document.getElementById('hp-text').style.color = hp > 50 ? 'lime' : (hp > 25 ? 'orange' : 'red');
-            document.getElementById('coins-text').innerText = `PIÈCES: ${coins}`;
-            document.getElementById('weapon-text').innerText = `ARME: ${weapons[currentWeaponKey].name}`;
+            document.getElementById('coins-text').innerText = `МОНЕТЫ: ${coins}`;
+            document.getElementById('weapon-text').innerText = `ОРУЖИЕ: ${weapons[currentWeaponKey].name}`;
             
-            // Affichage des munitions
+            // Отображение патронов
             const currentAmmo = weapons[currentWeaponKey].ammo;
             const maxAmmo = weapons[currentWeaponKey].maxAmmo;
             const ammoString = currentAmmo === Infinity ? "∞" : `${currentAmmo}/${maxAmmo}`;
-            document.getElementById('ammo-text').innerText = `MUNITIONS: ${ammoString}`;
+            document.getElementById('ammo-text').innerText = `ПАТРОНЫ: ${ammoString}`;
             
-            // Si l'arme est vide, on met le texte en rouge
             if(currentAmmo === 0) {
                 document.getElementById('ammo-text').style.color = 'red';
             } else {
@@ -199,12 +197,12 @@
 
         function buildMapMenu() {
             mapGrid.innerHTML = '';
-            document.getElementById('menu-coins').innerText = `PIÈCES: ${coins}`;
+            document.getElementById('menu-coins').innerText = `МОНЕТЫ: ${coins}`;
             
             for (let i = 0; i < 10; i++) {
                 const btn = document.createElement('button');
                 btn.className = `btn-map ${unlockedMaps[i] ? 'map-unlocked' : 'map-locked'}`;
-                btn.innerText = unlockedMaps[i] ? `CARTE ${i+1}` : `CARTE ${i+1}\n(1000 pièces)`;
+                btn.innerText = unlockedMaps[i] ? `КАРТА ${i+1}` : `КАРТА ${i+1}\n(1000 монет)`;
                 
                 btn.onclick = () => {
                     if (unlockedMaps[i]) startGame(i);
@@ -213,7 +211,7 @@
                         unlockedMaps[i] = true;
                         buildMapMenu();
                     } else {
-                        btn.innerText = "PAS ASSEZ!";
+                        btn.innerText = "НЕ ХВАТАЕТ!";
                         btn.style.color = "red";
                         setTimeout(buildMapMenu, 1500);
                     }
@@ -225,7 +223,7 @@
         document.getElementById('btn-start').onclick = () => { uiMain.style.display = 'none'; uiMap.style.display = 'flex'; buildMapMenu(); };
         document.getElementById('btn-back').onclick = () => { uiMap.style.display = 'none'; uiMain.style.display = 'flex'; };
 
-        // --- GÉNÉRATION ---
+        // --- ГЕНЕРАЦИЯ ---
         function startGame(mapIdx) {
             uiMap.style.display = 'none';
             uiHud.style.display = 'block';
@@ -236,7 +234,7 @@
             zombiesAlive = 0;
             isWaiting = false;
             
-            // Recharge automatique au début de la partie pour être sûr
+            // Восстанавливаем патроны при старте игры
             weapons['2'].ammo = weapons['2'].maxAmmo;
             weapons['3'].ammo = weapons['3'].maxAmmo;
 
@@ -248,277 +246,4 @@
 
             mapBlocks.forEach(b => scene.remove(b));
             mapBlocks = [];
-            enemies.forEach(e => scene.remove(e.mesh));
-            enemies = [];
-
-            const blockMat = new THREE.MeshLambertMaterial({ color: wallColors[mapIdx] });
-            for (let i = 0; i < 25; i++) {
-                const w = Math.random() * 4 + 2; const h = Math.random() * 4 + 1; const d = Math.random() * 4 + 2;
-                const geo = new THREE.BoxGeometry(w, h, d);
-                const block = new THREE.Mesh(geo, blockMat);
-                block.position.set((Math.random() - 0.5) * 80, h/2, (Math.random() - 0.5) * 80);
-                scene.add(block);
-                mapBlocks.push(block);
-            }
-
-            updateHUD();
-            showAnnouncement('PRÉPAREZ-VOUS...', 'yellow', 2000);
-            setTimeout(startRound, 2000);
-        }
-
-        function returnToMenu() {
-            controls.unlock();
-            uiHud.style.display = 'none';
-            uiMain.style.display = 'flex';
-            announceEl.style.display = 'none';
-            buildMapMenu();
-        }
-
-        // --- ZOMBIES ---
-        function spawnZombie(isBoss = false) {
-            let x, z;
-            do {
-                x = (Math.random() - 0.5) * 90;
-                z = (Math.random() - 0.5) * 90;
-            } while (Math.hypot(x - camera.position.x, z - camera.position.z) < 20);
-
-            const zType = isBoss ? 'boss' : (Math.random() > 0.6 ? 'runner' : 'walker');
-            let color, scale, hpMax, speed, reward;
-
-            if (zType === 'runner') { color = 0x00ff00; scale = [1.2, 2, 1.2]; hpMax = 2; speed = 8; reward = 10; }
-            else if (zType === 'walker') { color = 0x008000; scale = [2.2, 2.8, 2.2]; hpMax = 6; speed = 3; reward = 15; }
-            else { color = 0x222222; scale = [4, 5, 4]; hpMax = 150; speed = 2.0; reward = 500; }
-
-            const group = new THREE.Group();
-            group.position.set(x, scale[1]/2, z);
-
-            const bodyGeo = new THREE.BoxGeometry(scale[0], scale[1], scale[2]);
-            const bodyMat = new THREE.MeshLambertMaterial({ color: color });
-            const body = new THREE.Mesh(bodyGeo, bodyMat);
-            group.add(body);
-
-            const eyeGeo = new THREE.BoxGeometry(scale[0]*0.2, scale[1]*0.1, scale[2]*0.1);
-            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-            const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-scale[0]*0.25, scale[1]*0.25, scale[2]*0.5);
-            const eyeR = new THREE.Mesh(eyeGeo, eyeMat); eyeR.position.set(scale[0]*0.25, scale[1]*0.25, scale[2]*0.5);
-            group.add(eyeL); group.add(eyeR);
-
-            scene.add(group);
-            enemies.push({ mesh: group, body: body, type: zType, hp: hpMax, speed: speed, reward: reward });
-        }
-
-        function startRound() {
-            if (!controls.isLocked) return;
-            isWaiting = false;
-            
-            if (currentRound < 10) {
-                for(let i=0; i<10; i++) { spawnZombie(); zombiesAlive++; }
-            } else {
-                showAnnouncement('BOSS FINAL !\n(EN TÊTE À TÊTE)', 'red', 3000);
-                spawnZombie(true); zombiesAlive++;
-            }
-        }
-
-        function endRound() {
-            isWaiting = true;
-            hp = Math.min(100, hp + 20);
-            updateHUD();
-
-            if (currentRound < 10) {
-                showAnnouncement(`ROUND ${currentRound} TERMINÉ !\n+20 HP!\nSUIVANT DANS 3 SEC...`, 'yellow', 3000);
-                currentRound++;
-                setTimeout(startRound, 3000);
-            } else {
-                showAnnouncement('🏆 VICTOIRE ! 🏆\nTU AS BATTU LE BOSS !', 'lime', 5000);
-                setTimeout(returnToMenu, 5000);
-            }
-        }
-
-        // --- CONTRÔLES ---
-        const keys = { w: false, a: false, s: false, d: false };
-        document.addEventListener('keydown', (e) => {
-            if(e.code === 'KeyW') keys.w = true; if(e.code === 'KeyA') keys.a = true;
-            if(e.code === 'KeyS') keys.s = true; if(e.code === 'KeyD') keys.d = true;
-
-            // SAUT avec Espace
-            if(e.code === 'Space' && canJump && controls.isLocked) {
-                velocityY = 15; 
-                canJump = false;
-            }
-
-            // RECHARGEMENT avec la touche R
-            if(e.code === 'KeyR' && controls.isLocked) {
-                const wpn = weapons[currentWeaponKey];
-                // Si ce n'est pas le pistolet et qu'on n'est pas déjà au max
-                if (wpn.ammo !== Infinity && wpn.ammo < wpn.maxAmmo) {
-                    if (coins >= 35) {
-                        coins -= 35;
-                        wpn.ammo = wpn.maxAmmo;
-                        updateHUD();
-                        showAnnouncement('RECHARGÉ !', 'lime', 1000);
-                    } else {
-                        document.getElementById('ammo-text').innerText = "PAS ASSEZ (35 PIÈCES)!";
-                        document.getElementById('ammo-text').style.color = "red";
-                        setTimeout(updateHUD, 1500);
-                    }
-                }
-            }
-
-            // CHANGEMENT / ACHAT D'ARMES (Adapté pour AZERTY & Pavé Numérique sans utiliser Shift)
-            let pressedWeapon = null;
-            if (e.code === 'Digit1' || e.code === 'Numpad1' || e.key === '&' || e.key === '1') pressedWeapon = '1';
-            if (e.code === 'Digit2' || e.code === 'Numpad2' || e.key === 'é' || e.key === '2') pressedWeapon = '2';
-            if (e.code === 'Digit3' || e.code === 'Numpad3' || e.key === '"' || e.key === '3') pressedWeapon = '3';
-
-            if(pressedWeapon && controls.isLocked) {
-                const wpn = weapons[pressedWeapon];
-                if (wpn.owned) {
-                    currentWeaponKey = pressedWeapon; updateHUD();
-                } else if (coins >= wpn.cost) {
-                    coins -= wpn.cost; wpn.owned = true; currentWeaponKey = pressedWeapon; updateHUD();
-                } else {
-                    document.getElementById('weapon-text').innerText = `PAS ASSEZ: ${wpn.cost} PIÈCES!`;
-                    document.getElementById('weapon-text').style.color = 'red';
-                    setTimeout(updateHUD, 1500);
-                }
-            }
-        });
-        
-        document.addEventListener('keyup', (e) => {
-            if(e.code === 'KeyW') keys.w = false; if(e.code === 'KeyA') keys.a = false;
-            if(e.code === 'KeyS') keys.s = false; if(e.code === 'KeyD') keys.d = false;
-        });
-
-        const raycaster = new THREE.Raycaster();
-        let isMouseDown = false;
-        document.addEventListener('mousedown', () => { if(controls.isLocked) isMouseDown = true; });
-        document.addEventListener('mouseup', () => isMouseDown = false);
-
-        // --- BOUCLE DE JEU ---
-        const clock = new THREE.Clock();
-        let footstepTimer = 0;
-
-        function animate() {
-            requestAnimationFrame(animate);
-            const dt = clock.getDelta();
-
-            if (controls.isLocked && hp > 0) {
-                // Déplacements
-                const speed = 12 * dt;
-                if (keys.w) controls.moveForward(speed);
-                if (keys.s) controls.moveForward(-speed);
-                if (keys.d) controls.moveRight(speed);
-                if (keys.a) controls.moveRight(-speed);
-
-                // GRAVITÉ ET SAUT
-                velocityY -= 40 * dt; 
-                camera.position.y += velocityY * dt;
-                
-                if (camera.position.y <= 3) {
-                    camera.position.y = 3;
-                    velocityY = 0;
-                    canJump = true;
-                }
-
-                // COLLISION AVEC LES MURS
-                if (camera.position.x > 48) camera.position.x = 48; 
-                if (camera.position.x < -48) camera.position.x = -48;
-                if (camera.position.z > 48) camera.position.z = 48; 
-                if (camera.position.z < -48) camera.position.z = -48;
-
-                // Sons de pas 
-                if ((keys.w || keys.a || keys.s || keys.d) && canJump) {
-                    footstepTimer -= dt;
-                    if (footstepTimer <= 0) {
-                        sfxStep.currentTime = 0; sfxStep.playbackRate = 0.8 + Math.random()*0.4;
-                        sfxStep.play().catch(()=>{});
-                        footstepTimer = 0.35;
-                    }
-                } else { footstepTimer = 0; }
-
-                // TIR & MUNITIONS
-                if (weaponTimer > 0) weaponTimer -= dt;
-                if (isMouseDown && weaponTimer <= 0) {
-                    const wpn = weapons[currentWeaponKey];
-                    
-                    // On vérifie s'il reste des balles
-                    if (wpn.ammo > 0) {
-                        wpn.ammo--; // On retire une balle
-                        updateHUD(); // On met à jour l'affichage
-                        
-                        weaponTimer = wpn.cooldown;
-                        sfxFire.currentTime = 0; sfxFire.playbackRate = 0.9 + Math.random()*0.2;
-                        sfxFire.play().catch(()=>{});
-                        
-                        weaponMesh.position.z = -0.6;
-                        setTimeout(() => weaponMesh.position.z = -0.8, 50);
-
-                        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                        const intersects = raycaster.intersectObjects(enemies.map(e => e.body));
-                        
-                        if (intersects.length > 0) {
-                            const hitBody = intersects[0].object;
-                            const enemyIdx = enemies.findIndex(e => e.body === hitBody);
-                            if (enemyIdx !== -1) {
-                                const enemy = enemies[enemyIdx];
-                                enemy.hp -= wpn.damage;
-                                
-                                const origColor = enemy.body.material.color.getHex();
-                                enemy.body.material.color.setHex(0xff0000);
-                                setTimeout(() => { if(enemy && enemy.body) enemy.body.material.color.setHex(origColor); }, 100);
-
-                                if (enemy.hp <= 0) {
-                                    coins += enemy.reward;
-                                    updateHUD();
-                                    scene.remove(enemy.mesh);
-                                    enemies.splice(enemyIdx, 1);
-                                    zombiesAlive--;
-                                    
-                                    if (zombiesAlive <= 0 && !isWaiting) endRound();
-                                }
-                            }
-                        }
-                    } else {
-                        // Plus de balles ! On empêche de spammer le message
-                        weaponTimer = 0.5;
-                        showAnnouncement('RECHARGEZ (Touche R) !', 'red', 1000);
-                    }
-                }
-
-                // Mouvement des zombies
-                enemies.forEach(enemy => {
-                    const dir = new THREE.Vector3();
-                    dir.subVectors(camera.position, enemy.mesh.position).normalize();
-                    dir.y = 0; 
-                    
-                    const targetRotation = Math.atan2(dir.x, dir.z);
-                    enemy.mesh.rotation.y = targetRotation;
-                    enemy.mesh.position.addScaledVector(dir, enemy.speed * dt);
-
-                    if (enemy.mesh.position.distanceTo(camera.position) < (enemy.type === 'boss' ? 3.5 : 2.5)) {
-                        hp -= (enemy.type === 'boss' ? 40 : 20) * dt;
-                        updateHUD();
-                        if (hp <= 0) {
-                            showAnnouncement('TU ES DEVENU UN ZOMBIE!', 'red', 0);
-                            setTimeout(returnToMenu, 3000);
-                        }
-                    }
-                });
-            }
-            renderer.render(scene, camera);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        document.addEventListener('pointerlockchange', () => {
-            if (!document.pointerLockElement && hp > 0) returnToMenu();
-        });
-
-        animate();
-    </script>
-</body>
-</html>
+            enemies.
