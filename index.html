@@ -110,9 +110,10 @@
         let currentWeaponKey = '1';
         let weaponTimer = 0;
 
-        // --- ПЕРЕМЕННЫЕ ДЛЯ ПРЫЖКА ---
+        // --- ПЕРЕМЕННЫЕ ДЛЯ ПРЫЖКА И КОЛЛИЗИЙ ---
         let velocityY = 0;
         let canJump = true;
+        let mapBoxes = []; // Хранилище границ блоков для физики
 
         // --- НАСТРОЙКА THREE.JS ---
         const scene = new THREE.Scene();
@@ -246,6 +247,7 @@
 
             mapBlocks.forEach(b => scene.remove(b));
             mapBlocks = [];
+            mapBoxes = []; // Сброс физики
             enemies.forEach(e => scene.remove(e.mesh));
             enemies = [];
 
@@ -257,6 +259,10 @@
                 block.position.set((Math.random() - 0.5) * 80, h/2, (Math.random() - 0.5) * 80);
                 scene.add(block);
                 mapBlocks.push(block);
+                
+                // Создаем невидимые "границы" для физики
+                block.updateMatrixWorld();
+                mapBoxes.push(new THREE.Box3().setFromObject(block));
             }
 
             updateHUD();
@@ -332,11 +338,10 @@
             }
         }
 
-        // --- УПРАВЛЕНИЕ ЗАЩИТА ОТ РУССКОЙ КЛАВИАТУРЫ ---
+        // --- УПРАВЛЕНИЕ И ВЗАИМОДЕЙСТВИЕ ---
         const keys = { w: false, a: false, s: false, d: false };
         
         document.addEventListener('keydown', (e) => {
-            // Движение (работает на физические кнопки W,A,S,D и русские Ц,Ф,Ы,В)
             if(e.code === 'KeyW' || e.key.toLowerCase() === 'w' || e.key.toLowerCase() === 'ц') keys.w = true;
             if(e.code === 'KeyA' || e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'ф') keys.a = true;
             if(e.code === 'KeyS' || e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы') keys.s = true;
@@ -348,7 +353,7 @@
                 canJump = false;
             }
 
-            // ПЕРЕЗАРЯДКА (Нажатие R или К)
+            // ПЕРЕЗАРЯДКА
             if((e.code === 'KeyR' || e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к') && controls.isLocked) {
                 const wpn = weapons[currentWeaponKey];
                 if (wpn.ammo !== Infinity && wpn.ammo < wpn.maxAmmo) {
@@ -358,14 +363,12 @@
                         updateHUD();
                         showAnnouncement('ПЕРЕЗАРЯЖЕНО!', 'lime', 1000);
                     } else {
-                        document.getElementById('ammo-text').innerText = "НЕ ХВАТАЕТ 35 МОНЕТ!";
-                        document.getElementById('ammo-text').style.color = "red";
-                        setTimeout(updateHUD, 1500);
+                        showAnnouncement('НЕ ХВАТАЕТ 35 МОНЕТ!', 'red', 1500);
                     }
                 }
             }
 
-            // ВЫБОР И ПОКУПКА ОРУЖИЯ (1, 2, 3 - теперь 100% защита от языков)
+            // ВЫБОР И ПОКУПКА ОРУЖИЯ
             let pressedWeapon = null;
             if (e.code === 'Digit1' || e.code === 'Numpad1' || e.key === '1' || e.key === '&') pressedWeapon = '1';
             if (e.code === 'Digit2' || e.code === 'Numpad2' || e.key === '2' || e.key === 'é') pressedWeapon = '2';
@@ -376,16 +379,13 @@
                 if (wpn.owned) {
                     currentWeaponKey = pressedWeapon; updateHUD();
                 } else if (coins >= wpn.cost) {
-                    // Покупка
                     coins -= wpn.cost; 
                     wpn.owned = true; 
                     currentWeaponKey = pressedWeapon; 
                     updateHUD();
+                    showAnnouncement('ОРУЖИЕ КУПЛЕНО!', 'lime', 1500);
                 } else {
-                    // Не хватает денег
-                    document.getElementById('weapon-text').innerText = `НЕ ХВАТАЕТ: ${wpn.cost} МОНЕТ!`;
-                    document.getElementById('weapon-text').style.color = 'red';
-                    setTimeout(updateHUD, 1500);
+                    showAnnouncement(`НЕ ХВАТАЕТ ${wpn.cost} МОНЕТ!`, 'red', 1500);
                 }
             }
         });
@@ -411,12 +411,43 @@
             const dt = clock.getDelta();
 
             if (controls.isLocked && hp > 0) {
+                // Сохраняем старую позицию для физики столкновений
+                const oldX = camera.position.x;
+                const oldZ = camera.position.z;
+
                 // Движение
                 const speed = 12 * dt;
                 if (keys.w) controls.moveForward(speed);
                 if (keys.s) controls.moveForward(-speed);
                 if (keys.d) controls.moveRight(speed);
                 if (keys.a) controls.moveRight(-speed);
+
+                // --- ФИЗИКА СТОЛКНОВЕНИЙ СО СТЕНАМИ ---
+                const newX = camera.position.x;
+                const newZ = camera.position.z;
+                const playerRadius = 0.5; // "Толщина" игрока
+                
+                let hitX = false;
+                let hitZ = false;
+
+                // Проверяем столкновение по оси X
+                for (let box of mapBoxes) {
+                    if (newX + playerRadius > box.min.x && newX - playerRadius < box.max.x && 
+                        oldZ + playerRadius > box.min.z && oldZ - playerRadius < box.max.z) {
+                        hitX = true; break;
+                    }
+                }
+                // Проверяем столкновение по оси Z
+                for (let box of mapBoxes) {
+                    if (oldX + playerRadius > box.min.x && oldX - playerRadius < box.max.x && 
+                        newZ + playerRadius > box.min.z && newZ - playerRadius < box.max.z) {
+                        hitZ = true; break;
+                    }
+                }
+
+                // Применяем позицию с учетом стен
+                camera.position.x = hitX ? oldX : newX;
+                camera.position.z = hitZ ? oldZ : newZ;
 
                 // ГРАВИТАЦИЯ И ПРЫЖОК
                 velocityY -= 40 * dt; 
@@ -428,7 +459,7 @@
                     canJump = true;
                 }
 
-                // КОЛЛИЗИЯ СО СТЕНАМИ
+                // КОЛЛИЗИЯ С ГРАНИЦАМИ КАРТЫ
                 if (camera.position.x > 48) camera.position.x = 48; 
                 if (camera.position.x < -48) camera.position.x = -48;
                 if (camera.position.z > 48) camera.position.z = 48; 
@@ -486,9 +517,8 @@
                             }
                         }
                     } else {
-                        // Нет патронов!
                         weaponTimer = 0.5;
-                        showAnnouncement('ПЕРЕЗАРЯДИТЕСЬ (Кнопка R)!', 'red', 1000);
+                        showAnnouncement('ПЕРЕЗАРЯДИТЕСЬ (R/К)!', 'red', 1000);
                     }
                 }
 
